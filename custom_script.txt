@@ -1,1 +1,59 @@
 
+
+//VERSION=3
+// Geology-focused composite for semi-arid regions (e.g. Kurdistan)
+// Highlights bare rock and suppresses vegetation
+
+function setup() {
+  return {
+    input: ["B02", "B04", "B08", "B11", "B12", "dataMask"], // Blue, Red, NIR, SWIR1, SWIR2
+    output: {
+      bands: 4,   // R, G, B, alpha
+      sampleType: "AUTO"
+    }
+  };
+}
+
+// Simple contrast/gamma function
+function stretch(x) {
+  let g = 0.7;          // gamma < 1 → increase contrast in mid-tones
+  let v = x * 2.5;      // brightness factor
+  v = Math.min(Math.max(v, 0), 1);  // clamp to [0,1]
+  return Math.pow(v, g);
+}
+
+function evaluatePixel(sample) {
+  let blue = sample.B02;
+  let red  = sample.B04;
+  let nir  = sample.B08;
+  let swir1 = sample.B11;
+  let swir2 = sample.B12;
+
+  // NDVI to detect vegetation
+  let ndvi = (nir - red) / (nir + red + 1e-6);
+
+  // Base geology composite:
+  //   R = SWIR1   (lithology / moisture)
+  //   G = NIR     (rock vs soil/veg)
+  //   B = Red     (surface texture)
+  let R = stretch(swir1);
+  let G = stretch(nir);
+  let B = stretch(red);
+
+  // Vegetation mask: if NDVI is high, dim the pixel
+  if (ndvi > 0.3) {
+    R *= 0.3;
+    G *= 0.3;
+    B *= 0.3;
+  }
+
+  // Optional: slightly enhance very bright bare rock (e.g. carbonates)
+  let brightness = (R + G + B) / 3.0;
+  if (brightness > 0.6 && ndvi < 0.2) {
+    R = Math.min(R * 1.2, 1.0);
+    G = Math.min(G * 1.1, 1.0);
+    B = Math.min(B * 1.0, 1.0);
+  }
+
+  return [R, G, B, sample.dataMask];
+}
